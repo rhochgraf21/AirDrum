@@ -1,5 +1,6 @@
 ## May 25 2022 Robert Hochgraf
 
+
 # First import the libraries
 import numpy as np
 # import pandas as pd
@@ -128,7 +129,6 @@ def main():
 
         if(lHand[1] > mShoulder[1] and triggerL == False):
             triggerL = True
-            print("DRUM TRIGGER")
             msg = mido.Message('note_on', note=lNote)
             outport.send(msg)
         if(lHand[1] <= mShoulder[1]):
@@ -138,7 +138,6 @@ def main():
 
         if(rHand[1] > mShoulder[1] and triggerR == False):
             triggerR = True
-            print("DRUM TRIGGER")
             msg = mido.Message('note_on', note=rNote)
             outport.send(msg)
         if(rHand[1] <= mShoulder[1]):
@@ -151,11 +150,19 @@ def main():
         cv2.putText(img, ('LH Y Pos:' + str(lHand[1])), (20, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 3)
         cv2.putText(img, ('LH Z Pos:' + str(lHand[2])), (20, 260), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 3)
 
-        # resize the image
+        # draw a drum set on the image
+        overlay = cv2.imread('drumset.png')
+        overlay = cv2.resize(overlay, (1280,960))
+
+        # resize the images
         img_scaled = cv2.resize(img, (1280, 960))
 
+        # merge the two images
+        dst = cv2.addWeighted(overlay, 0.3, img_scaled, 0.7, 0)
+
         # display the resized image
-        cv2.imshow("Image", img_scaled)
+        cv2.imshow("Image", dst)
+
         # sleep cv2 for 1 ms
         cv2.waitKey(1)
 
