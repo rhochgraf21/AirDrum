@@ -83,6 +83,58 @@ class PoseDetector:
             shoulderM = (shoulderL + shoulderR) * 0.5
             return shoulderM
 
+''' Overlays the overlay image on the background, x, y are offset for where top left of image is placed.
+    Cuts off the overlay image if it does out of range of the background.'''
+def overlay_transparent(background, overlay, x, y):
+    x = int(x)
+    y = int(y)
+
+    # remove the alpha channel from the overlay
+    overlay_3_ch = cv2.cvtColor(overlay, cv2.COLOR_BGRA2BGR)
+
+    # store overlay shape
+    h, w, c = overlay.shape
+
+    # store background shape
+    h2, w2, c2 = background.shape
+
+    # get legal placement area
+    x_max = min(x+w, x+w2)
+    y_max = min(y+h, y+h2)
+
+    if x < 0:
+        xdiff = -x
+    else:
+        xdiff = 0
+    if y < 0:
+        ydiff = -y
+    else:
+        ydiff = 0
+
+    x = max(x,0)
+    y = max(y,0)
+
+    # get the background within the area we will place the overlay
+    background_scaled = background[x:x_max, y:y_max]
+
+    # get the scaled shape
+    xmax = background_scaled.shape[0]
+    ymax = background_scaled.shape[1]
+
+    # make sure the overlay fits within background
+    overlay_3_ch = overlay_3_ch[xdiff:xmax+xdiff, ydiff:ymax+ydiff]
+
+    # get the alpha channel from the overlay
+    a = overlay[xdiff:xmax+xdiff, ydiff:ymax+ydiff, 3]
+    a = cv2.merge([a, a, a])
+
+    # blend the two images using the alpha channel as controlling mask
+    result = np.where(a == (0, 0, 0), background_scaled, overlay_3_ch)
+
+    background[x:x_max, y:y_max] = result[:, :]
+
+    return background
+
 
 # The main loop captures video from the webcam and draws poses
 def main():
@@ -151,17 +203,20 @@ def main():
         cv2.putText(img, ('LH Z Pos:' + str(lHand[2])), (20, 260), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 3)
 
         # draw a drum set on the image
-        overlay = cv2.imread('drumset.png')
-        overlay = cv2.resize(overlay, (1280,960))
+        # IMREAD_UNCHANGED keeps the transparency of the png
+        overlay = cv2.imread('drumset.png', cv2.IMREAD_UNCHANGED)
+        overlay = cv2.resize(overlay, (500,500))
 
         # resize the images
         img_scaled = cv2.resize(img, (1280, 960))
 
         # merge the two images
-        dst = cv2.addWeighted(overlay, 0.3, img_scaled, 0.7, 0)
+        ypos = mShoulder[0] * img_scaled.shape[0]
+        xpos = mShoulder[1] * img_scaled.shape[1]
+        img_scaled = overlay_transparent(img_scaled, overlay, xpos, ypos)
 
         # display the resized image
-        cv2.imshow("Image", dst)
+        cv2.imshow("Image", img_scaled)
 
         # sleep cv2 for 1 ms
         cv2.waitKey(1)
