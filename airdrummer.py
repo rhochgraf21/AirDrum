@@ -6,6 +6,7 @@ import numpy as np
 # import pandas as pd
 import cv2
 import mediapipe as mp
+import math
 
 # print copyright/debug/system information
 import time
@@ -83,11 +84,31 @@ class PoseDetector:
             shoulderM = (shoulderL + shoulderR) * 0.5
             return shoulderM
 
+    def getShoulderDistance(self, img):
+        if self.results.pose_landmarks:
+            shoulderL = [self.results.pose_landmarks.landmark[self.mpPose.PoseLandmark.LEFT_SHOULDER.value].x,
+                         self.results.pose_landmarks.landmark[self.mpPose.PoseLandmark.LEFT_SHOULDER.value].y,
+                         self.results.pose_landmarks.landmark[self.mpPose.PoseLandmark.LEFT_SHOULDER.value].z]
+            shoulderL = np.array(shoulderL)
+            shoulderR = [self.results.pose_landmarks.landmark[self.mpPose.PoseLandmark.RIGHT_SHOULDER.value].x,
+                         self.results.pose_landmarks.landmark[self.mpPose.PoseLandmark.RIGHT_SHOULDER.value].y,
+                         self.results.pose_landmarks.landmark[self.mpPose.PoseLandmark.RIGHT_SHOULDER.value].z]
+            shoulderR = np.array(shoulderR)
+
+            return int(abs(np.linalg.norm(shoulderL - shoulderR)) * img.shape[1])
+
+def overlay_transparent(background, overlay, x, y):
+    # store overlay shape
+    h, w, c = overlay.shape
+    y = int(y - h/2)
+    x = int(x + w/2)
+    return overlay_transparent_helper(background, overlay, x, y)
+
 ''' Overlays the overlay image on the background, x, y are offset for where top left of image is placed.
     Cuts off the overlay image if it does out of range of the background.'''
-def overlay_transparent(background, overlay, x, y):
-    x = int(x)
+def overlay_transparent_helper(background, overlay, x, y):
     y = int(y)
+    x = int(x)
 
     # remove the alpha channel from the overlay
     overlay_3_ch = cv2.cvtColor(overlay, cv2.COLOR_BGRA2BGR)
@@ -99,39 +120,39 @@ def overlay_transparent(background, overlay, x, y):
     h2, w2, c2 = background.shape
 
     # get legal placement area
-    x_max = min(x+w, x+w2)
-    y_max = min(y+h, y+h2)
+    y_max = min(y + h, y + h2)
+    x_max = min(x + w, x + w2)
 
-    if x < 0:
-        xdiff = -x
-    else:
-        xdiff = 0
     if y < 0:
         ydiff = -y
     else:
         ydiff = 0
+    if x < 0:
+        xdiff = -x
+    else:
+        xdiff = 0
 
-    x = max(x,0)
-    y = max(y,0)
+    y = max(y, 0)
+    x = max(x, 0)
 
     # get the background within the area we will place the overlay
-    background_scaled = background[x:x_max, y:y_max]
+    background_scaled = background[y:y_max, x:x_max]
 
     # get the scaled shape
-    xmax = background_scaled.shape[0]
-    ymax = background_scaled.shape[1]
+    ymax = background_scaled.shape[0]
+    xmax = background_scaled.shape[1]
 
     # make sure the overlay fits within background
-    overlay_3_ch = overlay_3_ch[xdiff:xmax+xdiff, ydiff:ymax+ydiff]
+    overlay_3_ch = overlay_3_ch[ydiff:ymax+ydiff, xdiff:xmax+xdiff]
 
     # get the alpha channel from the overlay
-    a = overlay[xdiff:xmax+xdiff, ydiff:ymax+ydiff, 3]
+    a = overlay[ydiff:ymax+ydiff, xdiff:xmax+xdiff, 3]
     a = cv2.merge([a, a, a])
 
     # blend the two images using the alpha channel as controlling mask
     result = np.where(a == (0, 0, 0), background_scaled, overlay_3_ch)
 
-    background[x:x_max, y:y_max] = result[:, :]
+    background[y:y_max, x:x_max] = result[:, :]
 
     return background
 
@@ -174,6 +195,7 @@ def main():
         lHand = detector.getLeftHand(img)
         rHand = detector.getRightHand(img)
         mShoulder = detector.getAvgShoulder(img)
+        shoulderWidth = int(detector.getShoulderDistance(img))
 
         # left hand plays bass drum and right plays snare
         lNote = 36
@@ -204,16 +226,25 @@ def main():
 
         # draw a drum set on the image
         # IMREAD_UNCHANGED keeps the transparency of the png
-        overlay = cv2.imread('drumset.png', cv2.IMREAD_UNCHANGED)
-        overlay = cv2.resize(overlay, (500,500))
+        # resize to img width of shoulders/2
+        overlay = cv2.imread('conga drum.png', cv2.IMREAD_UNCHANGED)
+        overlay = cv2.resize(overlay, (int(shoulderWidth*0.5), int(shoulderWidth)))
 
         # resize the images
         img_scaled = cv2.resize(img, (1280, 960))
 
         # merge the two images
-        ypos = mShoulder[0] * img_scaled.shape[0]
-        xpos = mShoulder[1] * img_scaled.shape[1]
+        xpos = mShoulder[0] * img_scaled.shape[0]
+        ypos = mShoulder[1] * img_scaled.shape[1]
+
+        # overlay multiple bongos at the shoulder width
+        img_scaled = overlay_transparent(img_scaled, overlay, xpos - int(shoulderWidth / 2), ypos)
         img_scaled = overlay_transparent(img_scaled, overlay, xpos, ypos)
+        img_scaled = overlay_transparent(img_scaled, overlay, xpos + int(shoulderWidth/2), ypos)
+        # img_scaled = overlay_transparent(img_scaled, overlay, xpos + shoulderWidth, ypos)
+
+        #print(shoulderWidth)
+        #img_scaled = overlay_transparent(img_scaled, overlay, int(xpos), ypos)
 
         # display the resized image
         cv2.imshow("Image", img_scaled)
